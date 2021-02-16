@@ -650,6 +650,10 @@ Generally, we should refrain from using it because of performance issue
 	COMPRESS and DECOMPRESS functions
 The COMPRESS and DECOMPRESS functions use the GZIP algorithm to compress and
 decompress the input, respectively. Both functions were introduced in SQL Server 2016.
+
+	STRING_SPLIT function
+The STRING_SPLIT table function splits an input string with a separated list of values into the
+individual elements. This function was introduced in SQL Server 2016.
 */
 
 SELECT LEN('abcde');
@@ -724,5 +728,157 @@ SELECT
 /* To return the uncompressed form of the employee resumes. USe the below query*/
 
 SELECT empid, CAST(DECOMPRESS(cv) AS NVARCHAR(MAX)) AS cv
-FROm dbo.EmployeeCVs;  -- Invalid table. Just for illustration.
+FROM dbo.EmployeeCVs;  -- Invalid table. Just for illustration.
+
+
+/*	Block of code to be tried*/
+
+SELECT STRING_SPLIT('10248,10249,10250', ',') AS S; -- available in 2016 SQL Server and above
+
+SELECT CAST(value AS INT) AS my_value
+FROM STRING_SPLIT('10248,10249,10250', ',') AS S;
+
+/*LIKE PREDICATE
+
+	%(percent) wildcard
+This represents a string of any size including empty string
+
+	_(underscore) wildcard
+This represents a single character
+
+	[<list of characters>] wildcard
+This represents a single character that must be one of the characters in the list.
+
+	[<character>-<character>] wildcard
+This represents a single character within the range specified.
+
+	[^<character list or range>] wildcard
+This represents a single character that is not in the character list.
+
+	ESCAPE character
+If you wanna search for a character that is also used as a wildcard, you can use an 
+ESCAPE character. Specify a character that we know for sure does not appear in the data
+as the escape character in front of the character you are looking for, specify the 
+ESCAPE keyword followed by the 'escape character' right after the pattern.
+
+Check whether a col1 contains an underscore(_)
+col1 LIKE '%!_%' ESCAPE '!'
+
+*/
+
+SELECT empid, lastname
+FROM HR.Employees
+WHERE lastname LIKE 'D%';
+
+/*The following returns employees where the second character in the lastname is e*/
+
+SELECT empid, lastname
+FROM HR.Employees
+WHERE lastname LIKE '_e%';
+
+/*
+The following query returns employees where first character in the last name
+is A, B, or C.
+*/
+
+SELECT empid, lastname
+FROM HR.Employees
+WHERE lastname LIKE '[ABC]%';
+
+/*
+The following query returns employees where first character in the last name
+is letter in the range A through E, inclusive, taking the collation into account.
+*/
+
+SELECT empid, lastname
+FROM HR.Employees
+WHERE lastname LIKE '[A-E]%';
+
+SELECT empid, lastname
+FROM HR.Employees
+WHERE lastname LIKE '[^A-E]%';
+
+
+/*	DATE and TIME data types
+First, there are 2 legacy date and time dsta types. Example DATETIME and SMALLDATETIME.
+There are now 4 more additions post-2008 SQL Server. Example, DATE, TIME, DATETIME2 and
+DATETIMEOFFSET. 
+
+It is important to note that DATE and TIME data types provide a separartion between the
+date and time components if you need it. DATETIME2 has a bigger date range and precision
+than the legacy types. DATETIMEOFFSET also includes offset from UTC. 
+
+Of note is that, TIME, DATETIME2 and DATETIMEOFFSET depend on the precision chosen. Thne precsion 
+is usually represented as integers between 0-7. 
+
+TIME(0) -- connotes precision at fractional-second.
+TIME(3) -- connotes precision at one-millisecond.
+TIME(7) -- connotes precision at 100-nanosecond.
+
+T-SQL does not have a way of to represent date and time literal. Instead there is an implicit
+conversion of one data type to the other based on data-type precedence.
+
+To change overall default language in your session, use SET LANGUAGE.
+
+TO change date format, use SET DATEFORMAT.
+
+SET LANGUAGE/SET DATEFORMAT are only affecting how SQL server interprets the input string
+and not the output of the result.
+
+It is recommended that language-neutral datetime literal is used because of other readers 
+from another country /region that wanna look at your code.
+
+literal expressed as 'YYYYMMDD' is not affected by the language settings. and therefore 
+is best practise.
+*/
+
+SELECT orderid, custid, empid, orderdate
+FROM Sales.Orders
+WHERE orderdate = '20160212';
+
+/* Implicit conversion happens above from string literal to a datetime.
+
+Below is an explicit conversion of character string to a DATE
+*/
+
+SELECT orderid, custid, empid, orderdate
+FROM Sales.Orders
+WHERE orderdate = CAST('20160212' AS DATE);
+
+
+SET LANGUAGE British;
+SELECT CAST('02/12/2026' AS DATE);
+
+SET LANGUAGE us_english;
+SELECT CAST('02/12/2026' AS DATE);
+
+/* When language-neutral date format is used, the result stays the same regardless of
+language settings*/
+
+SET LANGUAGE British;
+SELECT CAST('20260212' AS DATE);
+
+SET LANGUAGE us_english;
+SELECT CAST('20260212' AS DATE);
+
+/* We might wanna convert to a specific style. SQL Server book online should be used
+to check the style number
+
+CONVERT function can be used for this purpose.
+Its equivalent PARSE can also be seen below.
+
+NOTE: PARSE is significantly more expensive than the CONVERT function. Hence refrain
+from using it.
+*/
+
+SELECT CONVERT(DATE, '02/12/2016', 101); -- 101 is 'MM/DD/YYYY'
+
+SELECT PARSE('02/12/2016' AS DATE USING 'en-US'); -- 101 is US english
+
+SELECT CONVERT(DATE, '02/12/2016', 103); -- 103 is 'DD/MM/YYYY'
+
+SELECT PARSE('02/12/2016' AS DATE USING 'en-GB') -- 103 is british english
+
+
+
 
