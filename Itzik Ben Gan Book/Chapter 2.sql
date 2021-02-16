@@ -421,6 +421,18 @@ SQL uses a 3-valued predicate logic. However, it has different meanings in SQL
 language elements. This made it impossible to equate 'accept TRUE' and 'reject FALSE'
 For example, The treatment SQL has for query filters is 'accept TRUE' while
 for CHECK constraint, it 'rejects FALSE'.
+
+SQL treats NULLs inconsistently in different language elements for comparison and sorting purposes.
+Some treat 2 NULLs as same while others treat them differently.
+For grouping and sorting purposes-- 2 NULLs are considered the same
+In ORDER BY: SQL standard leaves this to product implementation. It can either come before
+or after values. However, it must be consistent within the implementation. T-SQL sorts NULLs
+before present values
+
+For the purposes of ensuring a UNIQUE constraint, standard SQL treats NULLs as different 
+from each other(thereby allowing multiple NULLs). Conversely, in T-SQL, a UNIQUE constraint 
+considers 2 NULLs as equal(allowing only one NULL).
+
 */
 
 /* The query returns all customers where region is equal to WA*/
@@ -448,3 +460,269 @@ because a missing value can be different or same with other missing values */
 SELECT custid, country, region, city
 FROM Sales.customers
 WHERE region IS NULL;
+
+/* If we wanna output rows with region attribute is different than WA, including
+those in which the value is missing. Use the below*/
+
+SELECT custid, country, region, city
+FROM Sales.Customers
+WHERE region <> 'WA' OR region IS NULL;
+
+
+/*	ALL-AT-ONCE OPERATIONS
+
+This means that all expressions oin the same logical processing phase are evaluateed logically
+at the same point in time. The reason for this is that all expressions that appear in the same logical
+phase are treated as a set, and as mentioned earlier, a set has no order to its elements.
+
+This concept explains why we cannot refer to column aliases assigned in a SELECT clause
+in the same SELECT clause. 
+
+order_year in the 3rd expression in the query below is invalid because the whole expressions
+are processed at once and there is no order of processing.
+
+*/
+
+SELECT 
+	orderid,
+	YEAR(orderdate) AS order_year,
+	order_year + 1 AS next_year
+FROM Sales.Orders;
+
+/* To return col1, col2 in a table T1 where col1/col2 > 2. To avoid division-by-zero error
+The query below is used*/
+
+SELECT col1, col2
+FROM dbo.T1
+WHERE col2 <> 0 AND col1/col2 > 2;
+
+
+/*	COLLATION
+
+This is a property of character data that encapsulates several aspects such as:
+language support, case sensitivity, accent sensitivity and more. To get the set of
+supported collations and their descriptions. you can query the table 
+function fn_helpcollations as follows.
+*/
+
+SELECT *
+FROM sys.fn_helpcollations();
+
+/*The following runs in a case-insensitive environment*/
+
+SELECT empid, firstname, lastname
+FROM HR.Employees
+WHERE lastname = 'davis';
+
+/* If we wanna make the filter case-sensitive even though the column's collation is
+case-insensitive, we can convert the collation of the expression as follows.
+
+This time the query returns an empty set because no match is found when a case-sensitive
+comparison is used. 
+*/
+
+SELECT empid, firstname, lastname
+FROM HR.Employees
+WHERE lastname COLLATE Latin1_General_CS_AS = N'davis';
+
+
+/*	OPERATORS and FUNCTIONS	
+
+This section covers string concatenation and functions that operate on character strings.
+For string concatenation, T-SQL provides (+) operator and the CONCAT function.
+For other operations on character strings, T-SQL provides several functions including
+SUBSTRING, LEFT, RIGHT, LEN, DATALENGTH, CHARINDEX, PATINDEX, REPLACE, REPLICATE
+STUFF, UPPER, LOWER, RTRIM, LTRIM, FORMAT, COMPRESS, DECOMPRESS and STRING_SPLIT.
+
+It is important to note that there is no SQL standard functions library-- They are all
+implementation specific*/
+
+/* String concatenation operator and CONCAT function*/
+
+/*The query below produces fullname column by concatenating firstname, a space, lastname*/
+
+SELECT empid, firstname + ' ' + lastname AS full_name
+FROM HR.Employees;
+
+/*	Standard SQL dictates that a concatenation with a NULL yeild a NULL. This is the default
+behavior of T-SQL. For example, consider the query against the Customers table. Some 
+customers have NULL in the region column. Hence SQL Server returns NULL for those customers*/
+
+SELECT custid, country, region, city,
+	country + ',' + region + ',' + city AS location
+FROM Sales.Customers;
+
+/*To treat a NULL as an empty string-- or more accurately to replace the NULL with an empty
+string-- we can use the COALESCE function.
+
+The COALESCE function accepts a list of input values and returns the first that is not NULL.
+We can revise the query above to avoid SQL Server retuirning NULL*/
+
+SELECT custid, country, region, city,
+	country + COALESCE(',' + region, '') + ',' + city AS location
+FROM Sales.Customers;
+
+/*	The problem of outputing NULL using the (+ plus) operator can also be surmounted using the
+CONCAT function. This automatically makes a NULL an empty string
+*/
+
+SELECT custid, country, region, city,
+	CONCAT(country, ',' + region, ',' + city) AS location
+FROM Sales.Customers;
+
+/* SUBSTRING function
+
+Syntax: SUBSTRING(string, start, length)
+
+If the length argument exceeds the character length, the function returns everything 
+without raising an error
+
+LEFT and RIGHT functions
+
+Syntax: LEFT(string, n), RIGHT(string, n)
+
+LEFT and RIGHT functions are abbreviations of SUBSTRING function. They return 'n' number of
+characters from left to right of the string
+
+*/
+
+SELECT SUBSTRING('abcde', 3, 3);
+
+SELECT RIGHT('abcde', 3);
+
+SELECT SUBSTRING('abcde', 3, 3); -- Implementation of the above code using SUBSTRING 
+
+SELECT LEFT('abcde', 3);
+
+SELECT SUBSTRING('abcde', 1, 3) -- Implementation of the above code using SUBSTRING 
+
+/*	
+	LEN and DATALENGTH function	
+
+LEN-- This gives number of characters in input string
+DATALENGTH-- This gives number of bytes in input string
+
+For regular characters, LEN and DATALENGTH returns same number because 1char = 1byte
+For Unicode characters, LEN and DATALENGTH returns different numbers because 1char >= 2bytes
+
+Note: Another important distinction between the two is that LEN excludes trailing spaces.
+Meanwhile, DATALENGTH does not leave out trailing spaces.
+
+	CHARINDEX function
+
+This returns the position of a substring in a string
+
+CHARINDEX(substring, string, start_pos) 
+
+start_pos is an optional argument that tells the function where to start looking. If substring is
+not found, function returns 0.
+
+	PATINDEX function
+
+This returns the position of the first occurence of a pattern within a string. The example 
+below shows hwo to find the position of the first occurence of a digit in a string.
+	REPLACE function
+This replaces all occurence of a substring1 in string with substring2
+
+Syntax: REPLACE(string, substring1, substring2)
+
+	REPLICATE function
+This replicates a string a certin number of times.
+
+Syntax: REPLICATE(string, n)-- This repeats string 'n' number of times
+
+	STUFF function
+This replaces a substring with another string 
+
+Syntax: STUFF(string, pos, delete_length, insert_string)
+
+	RTRIM and LTRIM function
+This removes leading and trailing spaces of an input string
+
+	FORMAT function
+This format an input value as a charcater string based on MIcrosoft .NET format string 
+and an optional culture specification.
+
+Syntax: FORMAT(input, format_string, culture)..
+
+Generally, we should refrain from using it because of performance issue
+
+	COMPRESS and DECOMPRESS functions
+The COMPRESS and DECOMPRESS functions use the GZIP algorithm to compress and
+decompress the input, respectively. Both functions were introduced in SQL Server 2016.
+*/
+
+SELECT LEN('abcde');
+
+SELECT DATALENGTH('abcde');		-- Both give same numbers
+
+SELECT LEN(N'abcde');
+
+SELECT DATALENGTH(N'abcde');		-- This gives twice the number of the one above
+
+SELECT CHARINDEX(' ', 'Itzik Ben-Gan')
+
+SELECT PATINDEX('%[0-9]%', 'abcd123efgh'); -- This outputs 5
+
+SELECT REPLACE('1-a 2-b','-', ':');
+
+/*Using REPLACE function to calculate the number of occurence of a character character
+The following query returns number of times character e appears in the lastname attribute*/
+
+SELECT empid, lastname, 
+	LEN(lastname) - LEN(REPLACE(lastname, 'e', '')) AS num_e_occurence
+FROM HR.Employees;
+
+SELECT REPLICATE('abc', 3);
+
+/*Using REPLICATE function, along with RIGHT function and string concatenation to return
+a 10-digit string representation of the supplier ID integer with leading zeros*/
+
+SELECT supplierid,
+	RIGHT(REPLICATE('0', 9) + CAST(supplierid AS VARCHAR(10)), 10) AS str_supplierid
+FROM Production.Suppliers;
+
+/* T-SQL has a FORMAT function that you can use to acieve such formatting needs much more easily, albeit at a
+higher cost*/
+
+/*The below removes y in 'xyz' and replaces it with 'abc' */
+
+SELECT STUFF('xyz', 2, 1, 'abc'); -- This deletes only y
+
+SELECT STUFF('xyz', 2, 2, 'abc'); -- This deletes yz
+
+SELECT STUFF('xyz', 2, 0, 'abc'); -- We can just insert 'abc' from pos 2 without deleting any character
+
+SELECT '	abc	';
+
+SELECT RTRIM('	abc	'); -- This removes trailing spaces
+
+SELECT LTRIM('	abc	'); -- This removes leading spaces
+
+SELECT RTRIM(LTRIM('	abc	'));
+
+SELECT FORMAT(1759, '0000000000');
+
+SELECT COMPRESS(N'This is my cv. Imagine it was much longer.') -- This is available in SQL server 2016 and above
+
+/* To insert @empid and compressed @cv(Uncompressed CV) into an EmployeeCVs in your database */
+
+INSERT INTO dbo.EmployeeCVs(empid, cv) VALUES (@empid, COMPRESS(@cv));
+
+/* The below does not return the original string charcaters instead returns a binary value*/
+
+SELECT DECOMPRESS(COMPRESS(N'This is my cv. Imagine it was much longer.'));
+
+/* To return orginal string in the code above, we CAST the decompressed input to target
+character string type*/
+
+SELECT 
+	CAST(
+		DECOMPRESS(COMPRESS(N'This is my cv. Imagine it was much longer.'))
+		AS NVARCHAR(MAX));
+
+/* To return the uncompressed form of the employee resumes. USe the below query*/
+
+SELECT empid, CAST(DECOMPRESS(cv) AS NVARCHAR(MAX)) AS cv
+FROm dbo.EmployeeCVs;  -- Invalid table. Just for illustration.
+
