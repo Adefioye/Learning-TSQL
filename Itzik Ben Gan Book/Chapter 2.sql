@@ -880,5 +880,94 @@ SELECT CONVERT(DATE, '02/12/2016', 103); -- 103 is 'DD/MM/YYYY'
 SELECT PARSE('02/12/2016' AS DATE USING 'en-GB') -- 103 is british english
 
 
+/*	WORKING WITH DATE and TIME spearately	*/
 
+IF OBJECT_ID(N'Sales.Orders2', N'U') IS NOT NULL DROP TABLE Sales.Orders2;
+
+/*
+
+For current SQL server we use as shown below
+
+DROP TABLE IF EXISTS Sales.Orders2;
+*/
+
+SELECT orderid, custid, empid, CAST(orderdate AS DATETIME) AS orderdate
+INTO Sales.Orders2
+FROM Sales.Orders;
+
+/* The orderdate in teh Sales.Order2 now is a datetime. with the TIME component set to midnight.
+With this modification, RANGE filter is not necessary. Hence, equality operator can be used
+*/
+
+SELECT orderid, custid, empid, orderdate
+FROM Sales.Orders2;
+
+SELECT orderid, custid, empid, orderdate
+FROM Sales.Orders2
+WHERE orderdate = '20160212';
+
+/*
+We can use CHECK constraint to ensure that only midnight is used as the time part. This can
+be accomplished using the CONVERT function. The CONVERT function below extracts only the 
+time portion of the orderdate value using the style 114.
+*/
+
+ALTER TABLE Sales.Orders2
+	ADD CONSTRAINT CHK_Orders2_orderdate
+	CHECK(CONVERT(CHAR(12), orderdate, 114) = '00:00:00:000');
+
+/* If time component is stored with nonmidnight values, you can use a range filter like
+this*/
+
+SELECT orderid, custid, empid, orderdate
+FROM Sales.Orders2
+WHERE orderdate >= '20160212' AND orderdate < '20160213';
+
+/* 
+IF we wanna work in legacy types, you can store all values with the base date of
+January 1, 1900. When SQL server converts a character string literal that contains only
+a time component to DATETIME or SMALLDATETIME, SQL server assumes the date is the base date.  
+ */
+
+ /*	Run the below for cleanup	*/
+
+ IF OBJECT_ID(N'Sales.Orders2', N'U') IS NOT NULL DROP TABLE Sales.Orders2;
+
+ 
+ /*	FILTER DATE RANGES
+ 
+ If we wanna filter date ranges whole year and month, it seems natural to use
+ YEAR and MONTH. The below is a query that returns orders placed in year 2015.
+
+ Note: in order to use an INDEX efficiently, we dont manipulate the filtered column.
+ To be able to use INDEX efficiently, we dont manipulate the filtered column. Hence,
+ we use a range filter.
+ */
+
+ SELECT orderid, custid, empid, orderdate
+ FROM Sales.Orders
+ WHERE YEAR(orderdate) = 2015;
+
+ SELECT orderid, custid, empid, orderdate
+ FROM Sales.Orders
+ WHERE orderdate >= '20150101' AND orderdate < '20160101';
+
+ /*	Similarly, instead of using functions to filter orders placed in a particular
+ month like below we instead use a range filter*/
+
+ SELECT orderid, custid, empid, orderdate
+ FROM Sales.Orders
+ WHERE YEAR(orderdate) = 2016 AND MONTH(orderdate) = 2;
+
+ SELECT orderid, custid, empid, orderdate
+ FROM Sales.Orders
+ WHERE orderdate >= '20160201' AND orderdate < '20160301';
+
+ /*	Date and time functions
+ 
+ In this section, We describe functions that operate on date and time data types including
+ GETDATE, CURRENT_TIMESTAMP, GETUTCDATE, SYSDATETIME, SYSUTCDATETIME, SYSDATETIMEOFFSET,
+ CAST, CONVERT, SWITCHOFFSET, AT TIME ZONE, TODATETIMEOFFSET, DATEADD, DATEDIFF, DATEDIFF_BIG,
+ DATEPART, YEAR, MONTH, DAY, DATENAME, various FROMPARTS functions and EOMONTH.
+ */
 
