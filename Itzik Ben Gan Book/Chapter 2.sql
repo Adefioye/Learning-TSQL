@@ -1021,3 +1021,168 @@ Syntax: SWITCHOFFSET(datetimeoffset_value, UTC_offset)
 SELECT
 	SYSDATETIMEOFFSET() AS sys_datetime_offset,
 	SWITCHOFFSET(SYSDATETIMEOFFSET(), '+05:00') AS switch_offset_value;
+
+/*
+	TODATETIMEOFFSET
+
+This is different from SWITCHOFFSET statement because because it accepts local date and time
+ without the offset component.
+
+ Its major use is that it transforms a non-offset-aware data to an offset-aware data.
+ 
+ Syntax: TODATETIMEOFFSET(local_date_and_time_value, UTC_offset)
+ 
+	AT TIME ZONE function 
+
+This accepts an input date and time value and converts it to a datetimeoffset value that corresponds to the specified
+target time zone. It is introduced in SQL Server 2016.
+
+Syntax: dt_val AT TIME ZONE time_zone
+
+dt_val can be DATETIME, SMALLDATETIME, DATETIME2, DATETIMEOFFSET
+time_zone can be any of windows time-zone namea as they appear in then name column in the 
+sys.time_zone_info view
+
+*/
+
+/*
+To use the following query to see the available timezones, their current offset from UTC
+and whether it's currently DAylight Savings Time(DST).
+*/
+
+/* Concept quite ambiguous for now*/
+SELECT name, current_utc_offset, is_current_dst
+FROM sys.time_zone_info;
+
+SELECT 
+	CAST('20160212 12:00:00.0000000' AS DATETIME2)
+		AT TIME ZONE 'Pacific Standard Time' AS val1,
+	CAST('20160212 12:00:00.0000000' AS DATETIME2)
+		AT TIME ZONE 'Pacific Standard Time' AS val2;
+
+SELECT
+	CAST('20160212 12:00:00.0000000 -05:00' AS DATETIMEOFFSET)
+		AT TIME ZONE 'Pacific Standard Time' AS val1,
+	CAST('20160812 12:00:00.0000000 -04:00' AS DATETIMEOFFSET)
+		AT TIME ZONE 'Pacific Standard Time' AS val2;
+
+
+/*
+	The DATEADD function
+
+This add aspecified amount of 'n' units to an input date/time/datetime value based on 
+the specified part
+
+Syntax: DATEADD(part, n, dt_val)
+
+	DATEDIFF and DATEDIFF_BIG functions
+
+This functions find the difference between 2 datetime values based based on specified part
+
+Syntax: DATEDIFF(part, dt_val1, dt_val2) -- This returns 4-byte INT
+Syntax: DATEDIFF_BIG(part, dt_val1, dt_val2) -- This returns 8-byte INT
+
+Maximum INT value (2,147,483,647). DATEDIFF_BIG is useful when the returned value is 
+higher than (2,147,483,647).
+
+	DATEPART function
+
+This returns an integer representing a requested part of a date and time
+
+Syntax: DATEPART(part, dt_val)
+	*/
+
+/* The below add one year to Febuary 12, 2016	*/
+
+SELECT DATEADD(YEAR, 1, '20160212');
+
+/* This returns difference in terms of days of days between 2 date values*/
+
+SELECT DATEDIFF(DAY, '20160212', '20170212');
+
+/* Lets find the millisecond difference between two date values, The code below results in
+an overflow. Therefore to accomodate the big value, we use DATEDIFF_BIG function
+*/
+
+SELECT DATEDIFF(MILLISECOND, '00010101', '20160212'); -- This results in an OVERFLOW
+
+SELECT DATEDIFF_BIG(MILLISECOND, '00010101', '20160212'); -- This is valid in 2016 SQL server and above
+
+/*
+Instead of computing the beginning and end day of an input date and time value using CAST 
+function, we use a more complicated approach requiring the sophisticated use of DATEDIFF
+and DATEADD.
+*/
+
+SELECT 
+	DATEADD(
+		DAY,
+		DATEDIFF(DAY, '19000101', SYSDATETIME()), '19000101');
+
+/* Thne below returns the first day of the current month*/
+
+SELECT 
+	DATEADD(
+		MONTH,
+		DATEDIFF(MONTH, '19000101', SYSDATETIME()), '19000101');
+
+/* Thne below returns the first day of the current year*/
+
+SELECT 
+	DATEADD(
+		YEAR,
+		DATEDIFF(YEAR, '19000101', SYSDATETIME()), '19000101');
+
+
+SELECT DATEPART(MONTH, '20160212');
+
+SELECT DATEPART(YEAR, '20160212');
+
+SELECT DATENAME(MONTH, '20160212'); -- Its apt to say this work majorly for naming MONTh
+
+SELECT DATENAME(YEAR, '20160212'); -- This returns integer instead of string
+
+SELECT DATENAME(DAY, '20160212'); -- This also returns integer
+
+/* ISDATE function works to check if a date is valid. It returns 1 if true and 0 otherwise*/
+
+SELECT ISDATE('20160212');
+
+SELECT ISDATE('20160230');
+
+/*
+	FROMPARTS functions
+The FROMPARTS functions accept integer inputs representing parts of a date and time value
+and construct a value of the requested type from those parts.
+
+Syntax:
+DATEFROMPARTS (year, month, day)
+DATETIME2FROMPARTS (year, month, day, hour, minute, seconds, fractions, precision)
+DATETIMEFROMPARTS (year, month, day, hour, minute, seconds, milliseconds)
+DATETIMEOFFSETFROMPARTS (year, month, day, hour, minute, seconds, fractions,
+hour_offset, minute_offset, precision)
+SMALLDATETIMEFROMPARTS (year, month, day, hour, minute)
+TIMEFROMPARTS (hour, minute, seconds, fractions, precision)
+*/
+
+SELECT
+	DATEFROMPARTS(2016, 02, 12),
+	DATETIME2FROMPARTS(2016, 02, 12, 13, 30, 5, 1, 7),
+	DATETIMEFROMPARTS(2016, 02, 12, 13, 30, 5, 997),
+	DATETIMEOFFSETFROMPARTS(2016, 02, 12, 13, 30, 5, 1, -8, 0, 7),
+	SMALLDATETIMEFROMPARTS(2016, 02, 12, 13, 30),
+	TIMEFROMPARTS(13, 30, 5, 1, 7);
+
+/*
+	EOMONTH function
+
+THis returns the end-of-month of the inputed date and time. An optional argument can also be 
+provided to add/ subtract to the month of the input date.
+
+Syntax: EOMONTH(input[, months_to_add])
+*/
+
+SELECT EOMONTH(SYSDATETIME());
+
+SELECT EOMONTH(SYSDATETIME(), 5);
+
