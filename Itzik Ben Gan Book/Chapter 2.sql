@@ -1119,7 +1119,7 @@ SELECT
 		DAY,
 		DATEDIFF(DAY, '19000101', SYSDATETIME()), '19000101');
 
-/* Thne below returns the first day of the current month*/
+/* The below returns the first day of the current month*/
 
 SELECT 
 	DATEADD(
@@ -1185,4 +1185,129 @@ Syntax: EOMONTH(input[, months_to_add])
 SELECT EOMONTH(SYSDATETIME());
 
 SELECT EOMONTH(SYSDATETIME(), 5);
+
+/*	The following return orders place at the last day of the month	*/
+SELECT orderid, orderdate, custid, empid
+FROM Sales.Orders
+WHERE orderdate = EOMONTH(orderdate);
+
+/* The following returns orders placed on the first day of each month*/
+SELECT orderid, orderdate, custid, empid
+FROM Sales.Orders
+WHERE orderdate LIKE '%01';
+
+/*
+SQL server provides tools for getting information abpur the metadata of objects such as
+information about tables in a database and columns in a table. Those tools include catalog
+views, information schema views, system stored procedures and functions.
+*/
+
+/* Catalog views contain information about objects in the database, including information
+that is specific to SQL server.
+
+To list the tables along with their schema in the database, we query sys.tables view.
+SCHEMA_NAME converts ID integer to its name
+*/
+
+SELECT SCHEMA_NAME(SCHEMA_ID) AS table_schema_name, name AS table_name
+FROM sys.tables;
+
+/* To return columns in the Sales.Orders table	*/
+
+SELECT
+	name AS column_name,
+	TYPE_NAME(system_type_id) AS column_type,
+	max_length,
+	collation_name,
+	is_nullable
+FROM sys.columns
+WHERE object_id = OBJECT_ID(N'Sales.Orders');
+
+/*
+Information schema views
+
+An information schema view is a set of views that resides in a schema called
+INFORMATION_SCHEMA and provides metadata information in a standard manner. That is,
+the views are defined in the SQL standard, so naturally they don't cover metadata aspects
+or objects specific to SQL Server (such as indexing).
+
+The query below return the INFORMATION_SCHEMA.TABLES view lists the user tables in the 
+current databse along with their schema names.
+*/
+
+SELECT TABLE_SCHEMA, TABLE_NAME
+FROM INFORMATION_SCHEMA.TABLES;
+
+/* The query against the INFORMATION_SCHEMA.COLUMNS provides most of the available
+information about columns in the Sales.Orders table	*/
+
+SELECT
+	COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH,
+	COLLATION_NAME, IS_NULLABLE
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_SCHEMA = N'Sales' AND TABLE_NAME = N'Orders';
+
+
+/* System stored procedures and functions
+
+This internally query the system catalog and give you back more digested metadata information.
+
+sp_tables: returns a list of objects (tables and views) that can be queried in the current
+database'
+
+sp_help: accepts object name as input ad then ouputs result sets with general information
+about the object, and also information about columns, indexes, constraints and more.
+
+sp_columns: returns information about columns in an object. For example, the following
+code returns detailed information about the Orders table.
+
+sp_helpconstraint: returns information about constraints in an object 
+*/
+
+EXEC sys.sp_tables;
+
+EXEC sys.sp_help
+	@objname = N'Sales.Orders';
+
+EXEC sys.sp_columns
+	@table_name = 'Orders',
+	@table_owner = 'Sales';
+
+EXEC sys.sp_helpconstraint
+	@objname = 'Sales.Orders';
+
+
+/* 
+	SERVERPROPERTY
+
+This returns the requested property of the current instance. For example, the below code
+returns the product level (such as RTM, SP1, SP2, and so on) of the current database.
+
+	DATABASEPROPERTYEX
+
+This returns the requested peoperty of the database name. The below code returns the collation
+of the TSQLV4 database.
+
+	OBJECTPROPERTY
+
+THis returns the requested property of the specified object name. The below indicates 
+whether the Orders table has a primary key.
+
+	COLUMNPROPERTY
+
+This returns the requested property of the specified column. The below indicates whether
+the shipcountry column in the Orders table is nullable:
+*/
+
+SELECT 
+	SERVERPROPERTY('ProductLevel');
+
+SELECT 
+	DATABASEPROPERTYEX('TSQLV4', 'Collation');
+
+SELECT
+	OBJECTPROPERTY(OBJECT_ID('Sales.Orders'), 'TableHasPrimaryKey');
+
+SELECT
+	COLUMNPROPERTY(OBJECT_ID('Sales.Orders'), 'shipcountry', 'AllowsNull');
 
