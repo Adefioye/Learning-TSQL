@@ -971,3 +971,53 @@ a time component to DATETIME or SMALLDATETIME, SQL server assumes the date is th
  DATEPART, YEAR, MONTH, DAY, DATENAME, various FROMPARTS functions and EOMONTH.
  */
 
+ /* Current date and time	
+ 
+ The following are niladic (parameterless) function used to obtain current date and time values
+ GETDATE, CURRENT_TIMESTAMP and GETUTCDATE are for legacy DATETIME type. However, SYSDATETIME
+ , SYSUTCDATETIME and SYSDATETIMEOFFSET
+ 
+ The code below demonstrates using the current date and time functions
+ */
+
+ SELECT
+	GETDATE()	AS get_date,
+	CURRENT_TIMESTAMP AS current_time_stamp,
+	GETUTCDATE() AS get_utc_date,
+	SYSDATETIME() AS sys_datetime,
+	SYSUTCDATETIME() AS sys_utc_datetime,
+	SYSDATETIMEOFFSET() AS sys_datetime_offset;
+
+/* None of the functions above gives only date or time. To do this, we use the 
+CAST function*/
+
+SELECT
+	SYSDATETIME() AS current_datetime,
+	CAST(SYSDATETIME() AS DATE) AS 'current_date',
+	CAST(SYSDATETIME() AS TIME) AS 'current_time';
+
+/*
+CAST, PARSE and CONVERT can cause a query to fail if they fail to succesfully convert their input value
+into a target value. However, to prevent query from failing, we use their corresponding counterparts
+with same arguments such as TRY_CAST, TRY_PARSE, TRY_CONVERT.
+
+TRY_CAST(input_value AS target)
+TRY_PARSE(input_value AS target USING culture)
+TRY_CONVERT(target, input_value, style_number)
+
+CAST is standard. PARSE and CONVERT are not. So, it is recommended to use CAST
+*/
+
+SELECT CAST(CAST(CURRENT_TIMESTAMP AS DATE) AS DATETIME);
+
+SELECT CONVERT(CHAR(8), CURRENT_TIMESTAMP, 112);
+
+/*
+SWITCHOFFSET adjusts an input DATETIMEOFFSET value to a specified target offset from UTC
+
+Syntax: SWITCHOFFSET(datetimeoffset_value, UTC_offset)
+*/
+
+SELECT
+	SYSDATETIMEOFFSET() AS sys_datetime_offset,
+	SWITCHOFFSET(SYSDATETIMEOFFSET(), '+05:00') AS switch_offset_value;
