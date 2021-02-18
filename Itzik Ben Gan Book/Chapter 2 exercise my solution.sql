@@ -136,3 +136,15 @@ SELECT empid, firstname, lastname, titleofcourtesy,
 		ELSE 'Unknown'
 	END AS gender		
 FROM HR.Employees;
+
+
+/*
+Write a query against the Sales.Customers table that returns for each customer the customer
+ID and region. Sort the rows in the output by region, having NULLs sort last (after non-NULL
+values).
+*/
+
+SELECT custid, region
+FROM Sales.Customers
+ORDER BY 
+	CASE WHEN region IS NULL THEN 1 ELSE 0 END, region;
