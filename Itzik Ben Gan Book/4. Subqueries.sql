@@ -280,8 +280,42 @@ INSERT INTO Sales.MyShippers(shipper_id, companyname, phone)
 
 
 -- This query returns Shippers that ship to customer with ID of 43
+
 SELECT shipper_id, companyname
 FROM Sales.MyShippers
-WHERE shipper_id IN (SELECT shipperid
+WHERE shipper_id IN (SELECT shipper_id
 					FROM Sales.Orders
 					WHERE custid = 43);
+
+/*
+The above query returns an incorrect result set. This is because an incorrect attribute name
+is used in the subquery. "shipper_id" is used instead of "shipperid" that can be found in the
+Sales.Orders table. 
+
+The query returns all rowss in MyShippers table because when the database engine could not
+find the attribe name in Sales.Orders table, it went to the outer table to find the attribute
+. Unfortunately, there is an atrribute name with shipper_id in then outer table making all
+rows to match.
+
+This behavior is by SQL design which was adhered to by SQL server. To avoid this kind of problem,
+It is advised to follow best practices. Example
+
+- Using consistent attribute names across all tables
+- Applying a prefix/alias on tables in a subquery 
+*/
+
+SELECT shipper_id, companyname
+FROM Sales.MyShippers
+WHERE shipper_id IN (SELECT O.shipper_id
+					FROM Sales.Orders AS O
+					WHERE O.custid = 43);
+
+-- When an alias is used, we can easily detect that the shipper_id is not in Sales.Orders
+-- table. and we can easily fix the problem
+
+SELECT shipper_id, companyname
+FROM Sales.MyShippers
+WHERE shipper_id IN (SELECT O.shipperid
+					FROM Sales.Orders AS O
+					WHERE O.custid = 43);
+
