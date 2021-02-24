@@ -214,4 +214,131 @@ FROM YearlyCount AS cur  LEFT JOIN YearlyCount AS prv
 	ON cur.orderyear = prv.orderyear + 1
 
 
--- Recursive CTEs
+/*
+	Recursive CTEs (ADVANCED READING)
+
+CTEs are unique amongst table expressions because they support recursion. Just like the 
+non-recursive ones, they are defined by SQL standard. A recursive CTE is defined by at least
+2 queries-- at least one query known as the anchor member and at least one known as 
+recursive member.
+
+The general form is shown below:
+
+WITH <CTE_Name> [(<target_column_list>)]
+AS
+(
+	<anchor_member>
+	UNION ALL
+	<recursive_member>
+)
+<outer_query_against_CTE>
+
+NOTE: If there are logical errors or problems with the data that result in cycles, the
+recursive member can be invoked infinite amount of times. For safety purpose, SQL Server
+restricts the number of times the recursive member can be invoked to 100 by default. 
+It can howerver be changed by setting OPTION(MAXRECURSION n) where n is an integer between
+0 and 32,767. If we wanna remove the restriction specify MAXRECURSION 0.
+
+Please note that SQL Server stores the intermediate result by the anchor and recursive 
+members in a work table in tempdb; If restriction is removed and there is a runaway query,
+the work table will quickly get very large and the query will never finish.
+*/
+
+-- Return subordinates of all managers in the HR.Employees table, REcursive CTE is used.
+
+WITH Emp_CTE AS
+(
+	SELECT empid, mgrid, firstname, lastname
+	FROM HR.Employees
+	WHERE empid = 2
+
+	UNION ALL
+
+	SELECT E.empid, E.mgrid, E.firstname, E.lastname
+	FROM Emp_CTE AS P INNER JOIN HR.Employees AS E
+		ON E.mgrid = P.empid
+)
+SELECT * FROM Emp_CTE;
+
+/*
+	VIEWS
+
+Derived tables and CTEs are single-statement scope, which means they are not reusable.
+Views and inline table-valued functions are 2 types of table expressions whose definitions
+are stored as permanent objects in the database, making them reusable.
+
+If there were just 2 columns in the underlying table, if we alter the columns in the 
+underlying table of the view. SQL server will not update the view with the new columns. To
+allow for the new column to be effected in the view we refresh the view's metadata using
+sp_refreshview, sp_refreshsqlmodule
+
+To avoid confusion, the best practice is to explicitly list the column names you need in the
+definition of the view. If columns are added to the underlying tables and you need them in the
+view, use the ALTER VIEW statement to revise the view definition accordingly.
+
+*/
+
+-- Let us create a view called USA_Custs
+
+
+USE TSQLV4;
+IF OBJECT_ID(N'Sales.USACusts', N'U') IS NOT NULL DROP TABLE Sales.USACusts;
+
+GO
+CREATE VIEW Sales.USACusts 
+AS
+SELECT *
+FROM Sales.Customers
+WHERE country = 'USA';
+GO
+
+-- Let us query the view Sales.USACusts.
+
+SELECT custid, companyname
+FROM Sales.USACusts;
+
+-- If ORDER BY is used in a view, an error occurs
+
+ALTER VIEW Sales.USACusts
+AS
+SELECT *
+FROM Sales.Customers
+WHERE country = N'USA'
+ORDER BY region;
+GO
+
+-- The error can be circumvented using TOP or OFFSET-FETCH. This creates an 'ordered view'
+-- However, it is not guaranteed that when an outer query is made against the view, it
+-- would be in an ordered fashion.
+
+ALTER VIEW Sales.USACusts
+AS
+SELECT TOP (100) PERCENT
+	*
+FROM Sales.Customers
+WHERE country = N'USA'
+ORDER BY region;
+GO
+
+-- Lets try and query the view to be sure that the result set is not ordered.
+
+SELECT custid, companyname, region
+FROM Sales.USACusts;
+
+-- Lets use offset in the view definition
+
+ALTER VIEW Sales.USACusts
+AS
+
+SELECT *
+FROM Sales.Customers
+WHERE country = N'USA'
+ORDER BY region
+OFFSET 0 ROWS;
+GO
+
+-- The query below seem to be ordered by region. This does not mean it is ordered, it just 
+-- happened by luck due to current optimization. The presenatation of thne result set can only
+-- be guaranteed with an ORDER BY clause.
+SELECT *
+FROM Sales.USACusts;
