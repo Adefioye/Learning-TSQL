@@ -146,4 +146,86 @@ SELECT country, region, city
 FROM EXCEPT_ALL;
 
 
+/*
+	PRECEDENCE OF SET OPERATORS
 
+INTERSECT operator precedes UNION and EXCEPT, and UNION and EXCEPT are evaluated in order
+of appearance.
+
+To control the order of evaluation of set operators, parentheses is used because they have 
+the highest precedence. Also, using parentheses increases readability, tgus reducing the 
+chance for errors.
+*/
+
+
+-- In the code below, INTERSECT is evaluated first even though it appears second.
+
+-- THe query returns locations that are supplier locations but not in both employee and 
+-- customers locations.
+
+SELECT country, region, city FROM Production.Suppliers
+EXCEPT
+SELECT country, region, city FROM HR.Employees
+INTERSECT
+SELECT country, region, city FROM Sales.Customers;
+
+-- Using parentheses, to control order of precedence. For example, locations that are supplier
+-- locations but not employee locations and that are also customer locations.
+
+(SELECT country, region, city FROM Production.Suppliers
+	EXCEPT
+SELECT country, region, city FROM HR.Employees)
+INTERSECT
+SELECT country, region, city FROM Sales.Customers;
+
+-- This also works just like the above
+
+SELECT country, region, city FROM Production.Suppliers
+INTERSECT
+SELECT country, region, city FROM Sales.Customers
+EXCEPT
+SELECT country, region, city FROM HR.Employees;
+
+
+/*
+ CIRCUMVENTING UNSUPPORTED LOGICAL PHASES
+
+Individual queries that are inputs to a set operator support logical processing phases such as
+WHERE, GROUPBY and HAVING. However, they are not supported by the result of set operators.
+Also, the inputs are not supported by ORDER BY clause. These can only be applied to the results of the set operators.
+
+On another note, it is possible to circumvent the non-support of WHERE, GROUP BY and HAVING by 
+the result of set operators. THis is done usually by using table expressions. Defining a table
+expression based on a query with set operator, and apply any logical-query processing phases you
+ want in the outer query.
+
+ ORDER BY clause is not allowed in the input queries, but it can be accomodated inside table
+ expressions. 
+*/
+
+-- the following query returns the number of distinct locations that are either employee or
+-- customer locations in each country:
+
+SELECT country, COUNT(*) AS numlocations
+FROM (SELECT country, region, city FROM HR.Employees
+	  UNION
+	  SELECT country, region, city FROM Sales.Customers) AS U
+GROUP BY country;
+
+
+-- The following code uses TOP queries to return the two most recent orders for
+-- employees 3 and 5:
+
+SELECT empid, orderid, orderdate
+FROM (SELECT TOP (2) empid, orderid, orderdate
+		FROM Sales.Orders
+		WHERE empid = 3
+		ORDER BY orderdate DESC, orderid DESC) AS D1
+
+UNION ALL
+
+SELECT empid, orderid, orderdate
+FROM (SELECT TOP (2) empid, orderid, orderdate
+		FROM Sales.Orders
+		WHERE empid = 5
+		ORDER BY orderdate DESC, orderid DESC) AS D2;
