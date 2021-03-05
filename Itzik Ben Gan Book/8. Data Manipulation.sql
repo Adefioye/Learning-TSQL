@@ -470,6 +470,9 @@ Table partitioning is about dividing your table into multiple units called parti
 mainly for manageability purposes. This allows handling processes like importing data
 into the table and purging historic data to be handled more efficiently.
 
+NOTE: T-SQL supports a nonstandard DELETE syntax based on joins. This means we can delete
+rows from a table based on filter against attributes in related rows from another table.
+
 */
 
 -- Run the following code ro create and populate those tables:
@@ -528,3 +531,208 @@ WHERE orderdate < '20150101';
 
 -- For example, suppose you had a partitioned table called T1 and you wanted to truncate
 -- partitions 1, 3, 5, and 7 through 10. You would use the following code to achieve this:
+
+TRUNCATE TABLE db.T1 WITH ( PARTITIONS(1, 3, 5, 7 TO 10) ); -- SQL Server 2016
+
+-- DELETE based on a join, 
+-- FROM in the DELETE clause is optional, we can specify DELETE O instead of DELETE FROM O
+
+DELETE FROM O
+FROM dbo.Orders AS O
+	INNER JOIN dbo.Customers AS C ON O.custid = C.custid
+WHERE C.country = 'USA';
+
+-- Since DELETE based on JOIN is non-standard, We can use standard code by using subqueries
+-- instead of joins. For example, the following DELETE statement uses a subquery to achieve
+-- the same task:
+
+DELETE FROM dbo.Orders
+WHERE EXISTS
+	(SELECT *
+		FROM dbo.Customers AS C
+		WHERE Orders.custid = C.custid AND C.country = 'USA');
+
+-- Let us cleanup the code by deleting dbo.Orders, dbo.Customers
+
+IF OBJECT_ID('dbo.Orders', 'U') IS NOT NULL DROP TABLE dbo.Orders;
+
+IF OBJECT_ID('dbo.Customers', 'U') IS NOT NULL DROP TABLE dbo.Customers;
+
+
+/*
+	UPDATING DATA
+
+T-SQL supports a standard UPDATE statement that can be used to update rows in a table.
+T-SQL also supports nonstandard forms of the UPDATE staement with joins and with variables.
+
+To observe the change we can run SELECT statement on the filter before and after the 
+UPDATE to see changes. We can also use a clause called OUTPUT.
+
+T-SQL supports compound assignment operators: += (plus equal), –= (minus equal), *=
+(multiplication equal), /= (division equal), %= (modulo equal), and others.
+*/
+
+-- Lets run the following code to craete and populate Orders and Orderdetails table 
+-- created in the dbo.schema
+
+IF OBJECT_ID('dbo.Orders', 'U') IS NOT NULL DROP TABLE dbo.Orders;
+
+IF OBJECT_ID('dbo.OrderDetails', 'U') IS NOT NULL DROP TABLE dbo.OrderDetails;
+
+CREATE TABLE dbo.Orders
+(
+	orderid			INT				NOT NULL,
+	custid			INT				NULL,
+	empid			INT				NOT NULL,
+	orderdate		DATE			NOT NULL,
+	requireddate	DATE			NOT NULL,
+	shippeddate		DATE			NULL,
+	shipperid		INT				NOT NULL,
+	freight			MONEY			NOT NULL
+		CONSTRAINT DFT_Orders_freight DEFAULT(0),
+	shipname		NVARCHAR(40)	NOT NULL,
+	shipaddress		NVARCHAR(60)	NOT NULL,
+	shipcity		NVARCHAR(15)	NOT NULL,
+	shipregion		NVARCHAR(15)	NULL,
+	shippostalcode	NVARCHAR(10)	NULL,
+	shipcountry		NVARCHAR(15)	NOT NULL,
+	CONSTRAINT PK_Orders PRIMARY KEY(orderid)
+);
+
+CREATE TABLE dbo.OrderDetails
+(
+	orderid			INT				NOT NULL,
+	productid		INT				NOT NULL,
+	unitprice		MONEY			NOT NULL
+		CONSTRAINT DFT_OrderDetails_unitprice DEFAULT(0),
+	qty				SMALLINT		NOT NULL
+		CONSTRAINT DFT_OrderDetails_qty DEFAULT(1),
+	discount		NUMERIC(4, 3)	NOT NULL
+		CONSTRAINT DFT_OrderDetails_discount DEFAULT(0),
+	CONSTRAINT PK_OrderDetails PRIMARY KEY(orderid, productid),
+	CONSTRAINT FK_OrderDetails_Orders FOREIGN KEY(orderid)
+		REFERENCES dbo.Orders(orderid),
+	CONSTRAINT CHK_discount CHECK(discount BETWEEN 0 AND 1),
+	CONSTRAINT CHK_qty CHECK(qty > 0),
+	CONSTRAINT CHK_unitprice CHECK(unitprice >= 0)
+);
+GO
+
+INSERT INTO dbo.Orders SELECT * FROM Sales.Orders;
+INSERT INTO dbo.OrderDetails SELECT * FROM Sales.OrderDetails;
+
+-- Let us increase the discount of all order details for product 51 by 5 percent:
+
+UPDATE dbo.OrderDetails
+	SET discount = discount + 0.05
+WHERE productid = 51; 
+
+-- We could express the above using a compound assignment operator
+
+UPDATE dbo.OrderDetails
+	SET discount += 0.05
+WHERE productid = 51;
+
+-- All-at-once-operation happens to expressions in the same logical phase, that is, expressions
+-- are evaluated as a set.
+
+UPDATE dbo.T1
+	SET col1 = col1 + 10, col2 = col1 + 10;
+
+-- For the above query both expressions are evaluated at the same time in the SET clause.
+-- Hence, the same value of col1 is used by both columns(col1 and col2)
+
+-- The UPDATE statement is used to increase the discount of all order details of orders 
+-- placed by customer 1 by 5 percent.
+
+UPDATE OD
+	SET discount += 0.05
+FROM dbo.OrderDetails AS OD INNER JOIN dbo.Orders AS O
+	ON OD.orderid = O.orderid
+WHERE O.custid = 1;
+
+-- We can also specify the full table name instead of alias by sticking to the standard 
+-- method instead of UPDATE with a JOIN approach.
+
+ -- UPDATE with JOIN allows us access to attributes of the other table
+
+UPDATE T1
+	SET col1 = T2.col1,
+		col2 = T2.col2,
+		col3 = T2.col3
+FROM dbo.T1 JOIN dbo.T2 ON T2.keycol = T1.keycol
+WHERE T2.col4 = 'ABC';
+
+-- Attempt to write the above code using STANDARD method results in lengthy query as shown
+
+UPDATE dbo.T1
+	SET col1 = (SELECT col1
+				FROM dbo.T2
+				WHERE T2.keycol = T1.keycol),
+		col2 = (SELECT col2
+				FROM dbo.T2
+				WHERE T2.keycol = T1.keycol),
+		col3 = (SELECT col3
+				FROM dbo.T2
+				WHERE T2.keycol = T1.keycol)
+WHERE EXISTS
+	(SELECT *
+		FROM dbo.T2
+		WHERE T2.keycol = T1.keycol AND T2.col4 = 'ABC');
+
+/*
+Standard SQL has support for row constructors (also known as vector expressions) that
+were only implemented partially in T-SQL. As of SQL Server 2016, many aspects of row
+constructors have not yet been implemented, including the ability to use them in the SET
+clause of an UPDATE statement like this:
+*/
+
+UPDATE dbo.T1
+	SET (col1, col2, col3) =
+		(SELECT col1, col2, col3
+			FROM dbo.T2
+			WHERE T2.keycol = T1.keycol)
+WHERE EXISTS
+	(SELECT *
+		FROM dbo.T2
+		WHERE T2.keycol = T1.keycol AND T2.col4 = 'ABC');
+
+/*
+	Assignment UPDATE
+
+T-SQL supports a proprietary UPDATE syntax that both updates data in a table and assigns
+values to variables at the same time. This syntax saves you the need to use separate UPDATE
+and SELECT statements to achieve the same task.
+
+One of the common cases for which you can use this syntax is in maintaining a custom
+sequence/autonumbering mechanism when the identity column property and the sequence
+object don’t work for you. One example is when you need to guarantee that there are no gaps
+between the values. To achieve this, you keep the last-used value in a table, and whenever you
+need a new value, you use the
+*/
+
+
+IF OBJECT_ID('dbo.MySequences', 'U') IS NOT NULL DROP TABLE dbo.MySequences;
+
+CREATE TABLE dbo.MySequences
+(
+	id VARCHAR(10)	NOT NULL
+		CONSTRAINT PK_MySequences PRIMARY KEY(id),
+	val INT			NOT NULL
+);
+INSERT INTO dbo.MySequences VALUES('SEQ1', 0);
+
+DECLARE @nextval AS INT;
+
+UPDATE dbo.MySequences
+	SET @nextval = val += 1
+WHERE id = 'SEQ1';
+
+SELECT @nextval;
+
+SELECT * FROM dbo.MySequences;
+
+-- Let us cleanup
+
+IF OBJECT_ID('dbo.MySequences', 'U') IS NOT NULL DROP TABLE dbo.MySequences;
+
