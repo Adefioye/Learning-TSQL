@@ -736,3 +736,296 @@ SELECT * FROM dbo.MySequences;
 
 IF OBJECT_ID('dbo.MySequences', 'U') IS NOT NULL DROP TABLE dbo.MySequences;
 
+/*
+	MERGING DATA
+
+T-SQL supports a statement called MERGE we can use to merge data from a source table into
+a target table-- This involves applying different actions (INSERT, UPDATE and DELETE) based
+on conditional logic. The MERGE statement is part of the SQL standard, albrit T-SQL adds a 
+few extensions.
+
+A task achieved by a single statement MERGE statement typically transalates to a combination
+of several DML statements(INSERT, UPDATE and DELETE) without a merge
+*/
+
+
+-- To demonstrate the MERGE statement,Let us create tables called dbo.Customers and
+-- dbo.CustomersStage and populate them with sample data.
+
+IF OBJECT_ID('dbo.Customers, dbo.CustomersStage', 'U') IS NOT NULL DROP TABLE dbo.Customers, dbo.CustomersStage;
+GO
+
+CREATE TABLE dbo.Customers
+(
+	custid		INT			NOT NULL,
+	companyname VARCHAR(25) NOT NULL,
+	phone		VARCHAR(20) NOT NULL,
+	address		VARCHAR(50) NOT NULL,
+	CONSTRAINT PK_Customers PRIMARY KEY(custid)
+);
+INSERT INTO dbo.Customers(custid, companyname, phone, address)
+VALUES
+	(1, 'cust 1', '(111) 111-1111', 'address 1'),
+	(2, 'cust 2', '(222) 222-2222', 'address 2'),
+	(3, 'cust 3', '(333) 333-3333', 'address 3'),
+	(4, 'cust 4', '(444) 444-4444', 'address 4'),
+	(5, 'cust 5', '(555) 555-5555', 'address 5');
+
+CREATE TABLE dbo.CustomersStage
+(
+	custid		INT			NOT NULL,
+	companyname VARCHAR(25) NOT NULL,
+	phone		VARCHAR(20) NOT NULL,
+	address		VARCHAR(50) NOT NULL,
+	CONSTRAINT PK_CustomersStage PRIMARY KEY(custid)
+);
+INSERT INTO dbo.CustomersStage(custid, companyname, phone, address)
+VALUES
+	(2, 'AAAAA', '(222) 222-2222', 'address 2'),
+	(3, 'cust 3', '(333) 333-3333', 'address 3'),
+	(5, 'BBBBB', 'CCCCC', 'DDDDD'),
+	(6, 'cust 6 (new)', '(666) 666-6666', 'address 6'),
+	(7, 'cust 7 (new)', '(777) 777-7777', 'address 7');
+
+-- Lets run a query on Customers and CustomersStage table
+
+SELECT * FROM dbo.Customers;
+
+SELECT * FROM dbo.CustomersStage;
+
+-- Let us assume we wanna merge Customers and CustomersStage table and then add customers 
+-- that do not exist and update customers that do exist. MERGE is appropriate for this
+-- kind of task
+
+MERGE INTO dbo.Customers AS TGT
+	USING dbo.CustomersStage AS SRC
+	ON TGT.custid = SRC.custid
+WHEN MATCHED THEN
+	UPDATE SET
+		TGT.companyname = SRC.companyname,
+		TGT.phone = SRC.phone,
+		TGT.address = SRC.address
+WHEN NOT MATCHED THEN
+	INSERT (custid, companyname, phone, address)
+	VALUES (SRC.custid, SRC.companyname, SRC.phone, SRC.address);
+
+-- Lets check to ensure it was properly modified
+
+SELECT * FROM dbo.Customers;
+
+-- T-SQL also implements a nonstandard extension called WHEN NOT MATCHED BY SOURCE THEN
+-- This leads to column with custid of 1 and 4 to be deleted
+
+MERGE INTO dbo.Customers AS TGT
+	USING dbo.CustomersStage AS SRC
+	ON TGT.custid = SRC.custid
+WHEN MATCHED THEN
+	UPDATE SET
+		TGT.companyname = SRC.companyname,
+		TGT.phone = SRC.phone,
+		TGT.address = SRC.address
+WHEN NOT MATCHED THEN
+	INSERT (custid, companyname, phone, address)
+	VALUES (SRC.custid, SRC.companyname, SRC.phone, SRC.address)
+WHEN NOT MATCHED BY SOURCE THEN
+	DELETE;
+
+-- The MERGE statement above actually dont check if the columns of target and source tables
+-- are alike before updating. To assert their a difference in at least one column
+-- before UPDATE. We add AND option to WHEN MATCHED THEN clause and a predicate.
+
+MERGE INTO dbo.Customers AS TGT
+	USING dbo.CustomersStage AS SRC
+	ON TGT.custid = SRC.custid
+WHEN MATCHED AND
+	(	TGT.companyname <> SRC.companyname
+	OR	TGT.phone <> SRC.phone
+	OR	TGT.address <> SRC.address) THEN
+	UPDATE SET
+		TGT.companyname = SRC.companyname,
+		TGT.phone = SRC.phone,
+		TGT.address = SRC.address
+WHEN NOT MATCHED THEN
+	INSERT (custid, companyname, phone, address)
+	VALUES (SRC.custid, SRC.companyname, SRC.phone, SRC.address);
+
+
+/*
+	MODIFYING DATA through TABLE EXPRESSIONS
+
+T-SQL doesn't limit actions against table expressions to SELECT only. it also allows other
+DML statements(INSERT, UPDATE, DELETE and MERGE) against those. 
+
+	Modifying data through table expressions has a few restrictions:
+
+--> If the query defining the table expression joins tables, you're allowed to affect 
+allow one side of the join, not both, in then same modification statement.
+
+--> You cannot update a column that is a result of a calculation; SQL Server doesn't try
+to reverse-engineer the values.
+
+--> INSERT statements must specify values for any columns in the underlying table that do
+not get their values implicitly. Examples for cases where a column can get a value
+implicitly include a column that allows NULLs, has a default value, has an identity
+property, or is typed as ROWVERSION.
+
+*/
+
+-- Onne of the most powerful use cases for using table expressions to modify data is for 
+-- toubleshooting and debugging purposes.
+
+UPDATE OD
+	SET discount += 0.05
+FROM dbo.OrderDetails AS OD INNER JOIN dbo.Orders AS O
+	ON OD.orderid = O.orderid
+WHERE O.custid = 1;
+
+-- Table expressions can be used for to update as shown below usng CTEs
+
+WITH C AS
+(
+	SELECT custid, OD.orderid, productid, discount, discount + 0.05 AS newdiscount
+	FROM dbo.OrderDetails AS OD INNER JOIN dbo.Orders AS O
+		ON OD.orderid = O.orderid
+	WHERE O.custid = 1
+)
+UPDATE C
+	SET discount = newdiscount;
+
+SELECT OD.* FROM dbo.OrderDetails AS OD INNER JOIN dbo.Orders AS O
+		ON OD.orderid = O.orderid
+	WHERE O.custid = 1;
+
+-- THE above can also be implemented using a derived table as shown
+
+UPDATE D
+	SET discount = newdiscount
+FROM (
+	SELECT custid, OD.orderid, productid, discount, discount + 0.05 AS newdiscount
+	FROM dbo.OrderDetails AS OD INNER JOIN dbo.Orders AS O
+		ON OD.orderid = O.orderid
+	WHERE O.custid = 1
+) AS D;
+
+SELECT OD.* FROM dbo.OrderDetails AS OD INNER JOIN dbo.Orders AS O
+		ON OD.orderid = O.orderid
+	WHERE O.custid = 1;
+
+-- Using table expression makes troubleshooting easy. However, sometimes, it is the only
+-- option.
+
+IF OBJECT_ID('dbo.T1', 'U') IS NOT NULL DROP TABLE dbo.T1;
+
+CREATE TABLE dbo.T1(col1 INT, col2 INT);
+GO
+
+INSERT INTO dbo.T1(col1) VALUES(20), (10), (30);
+
+SELECT * FROM dbo.T1;
+
+-- Let us try update col2 with the result of a ROW_NUMBER function. The problem is that 
+-- ROW_NUMBER is not allowed in the SET clause of an UPDATE statement.It is only allowed in
+-- in the SELECT clause. Try running the following code.
+
+UPDATE dbo.T1
+	SET col2 = ROW_NUMBER() OVER(ORDER BY col1);
+
+-- To get around this, we use a table expression
+
+WITH C AS
+(
+	SELECT col1, col2, ROW_NUMBER() OVER(ORDER BY col1) AS rownum
+	FROM dbo.T1
+)
+UPDATE C
+	SET col2 = rownum;
+
+-- Query the result of the update
+
+SELECT * FROM dbo.T1;
+
+/*
+	Modifications with TOP and OFFSETFETCH
+
+T-SQL supports using TOP option in INSERT, UPDATE, DELETE and MERGE statements. When the TOP 
+option is used, SQL Server would stop processing modification when the number(percentage) of
+rows specified has been modified.
+
+Unfortunately, ORDER BY clause is not allowed in DML statements. Essentially, whichever rows
+SQL Server has access first will be modified.
+
+The OFFSET-FETCH filter is not allowed directly in modifications because this filter
+requires an ORDER BY clause and modification statements don’t support one.
+*/
+
+IF OBJECT_ID('dbo.OrderDetails', 'U') IS NOT NULL DROP TABLE dbo.OrderDetails;
+
+IF OBJECT_ID('dbo.Orders', 'U') IS NOT NULL DROP TABLE dbo.Orders;
+
+CREATE TABLE dbo.Orders
+(
+	orderid			INT				NOT NULL,
+	custid			INT				NULL,
+	empid			INT				NOT NULL,
+	orderdate		DATE			NOT NULL,
+	requireddate	DATE			NOT NULL,
+	shippeddate		DATE			NULL,
+	shipperid		INT				NOT NULL,
+	freight			MONEY			NOT NULL
+		CONSTRAINT DFT_Orders_freight DEFAULT(0),
+	shipname		NVARCHAR(40)	NOT NULL,
+	shipaddress		NVARCHAR(60)	NOT NULL,
+	shipcity		NVARCHAR(15)	NOT NULL,
+	shipregion		NVARCHAR(15)	NULL,
+	shippostalcode	NVARCHAR(10)	NULL,
+	shipcountry		NVARCHAR(15)	NOT NULL,
+		CONSTRAINT PK_Orders PRIMARY KEY(orderid)
+);
+GO
+
+INSERT INTO dbo.Orders SELECT * FROM Sales.Orders;
+
+-- Let us demonstrate the use of DELETE statement with the TOP option to delete 50 rows
+-- This deletes any 50 rows in Orders table based on physical data layout and optimization choices
+
+DELETE TOP(50) FROM dbo.Orders;
+
+-- SImilarly, we can use TOP option with INSERT and UPDATE statement.The following updates 
+-- 50 rows from Orders table, by increasing freight values by 10
+
+UPDATE TOP(50) dbo.Orders
+	SET freight += 10.00;
+
+-- In reality, we usually do care about the specific orders we wanna modify. This is where
+-- the power of table expression comes into play.
+
+-- The following deletes 50 orders with then lowest order id values
+
+WITH C AS
+(
+	SELECT TOP (50) *
+	FROM dbo.Orders
+	ORDER BY orderid
+)
+DELETE FROM C;
+
+-- Similarly, the following code updates 50 orders with the highest order ID values, 
+-- increasing their values by 10:
+
+WITH C AS 
+(
+	SELECT TOP (50) *
+	FROM dbo.Orders
+	ORDER BY orderid DESC
+)
+UPDATE C
+	SET freight += 10.00;
+
+-- Alternatively, we could use OFFSET-FETCH
+
+/*
+	OUTPUT clause
+
+
+*/
+
