@@ -1277,3 +1277,4 @@ IF OBJECT_ID('dbo.Customers', 'U') IS NOT NULL DROP TABLE dbo.Customers;
 IF OBJECT_ID('dbo.T1', 'U') IS NOT NULL DROP TABLE dbo.T1;
 IF OBJECT_ID('dbo.MySequences', 'U') IS NOT NULL DROP SEQUENCE dbo.MySequences;
 IF OBJECT_ID('dbo.CustomersStage', 'U') IS NOT NULL DROP TABLE dbo.CustomersStage;
+
