@@ -93,5 +93,87 @@ WHERE orderid > 11077;
 /*
 	LOCKS and BLOCKING
 
+By default, SQL Server box product uses a pure locking model to enforce the isolation property
+of transactions.
+
+Azure SQL Database uses row-versioning model by default. If one is to test this following code
+in this chapter. The property READ_COMMITTED_SNAPSHOT should be turned off to swith to the locking
+model by default. 
+
+ALTER DATABASE TSQLV4 SET READ_COMMITTED_SNAPSHOT OFF;
+
+There are 2 types of lock modes: exclusive and shared lock
+
+For SQL Server box product, when trying to modify data, by default, the transaction requests
+an exlusive lock on the data resource. What this means is that, other transactions cannot
+have exclusive lock or perhaps access to the data until we COMMIT TRAN or ROLLBACK TRAN.
+
+However, when reading a data, a shared lock is by default requested by the transaction. 
+Therefore, other transactions can also initiate a shared lock or perhaps read the same data
+resource. In this case, isolation level is by default READ COMMITTED.
+
+When modifying a data, the lock mode and duration required cannot be changed. However, when
+reading a data, it is possible to change way locking is handled by changing the isolation level.
+
+In Azure SQL database, the default isolation level is READ COMMITTED SNAPSHOT. With this a 
+combination of locking and row-versioning are implemented. This means if a transaction is
+modifying a data row, it is also possible for another transaction to read the same data but in this case
+the data being read by another transaction would be last stable consistent data. This happens
+pretty much within the time of the first transaction.
+
 
 */
+
+/*
+	TROUBLESHOOTING BLOCKING
+
+Blocking is normal in a system as long as requests are satisfied within a reasonable amount
+of time. However, if some requests wait too long, you might need to troubleshoot the blocking
+situation and see whether you can do something to prevent such long latencies.
+
+For example, long-running transactions result in long wait. Transction can be shortened by moving activities
+in the unit of work outside the transaction. A bug can also make the transaction open for a longtime
+long time. 
+*/
+
+USE TSQLV4;
+
+SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+
+BEGIN TRAN;
+	-- connection 1
+	UPDATE Production.Products
+	SET unitprice += 1.00
+	WHERE productid = 2;
+
+	-- connection 2 (highlight only below and run it)
+	SELECT productid, unitprice
+	FROM Production.Products
+	WHERE productid = 2;
+
+-- sys.dm_tran_locks provides dynamic info about various aspects of your system
+
+SELECT -- use * to explore other available attributes
+	request_session_id AS sid,
+	resource_type AS restype,
+	resource_database_id AS dbid,
+	DB_NAME(resource_database_id) AS dbname,
+	resource_description AS res,
+	resource_associated_entity_id AS resid,
+	request_mode AS mode,
+	request_status AS status
+FROM sys.dm_tran_locks;
+
+SELECT @@SPID AS session_id;  -- To show session id
+
+/*
+
+*/
+SELECT -- use * to explore
+	session_id AS sid,
+	connect_time,
+	last_read,
+	last_write,
+	most_recent_sql_handle
+FROM sys.dm_exec_connections
+WHERE session_id IN(52);
