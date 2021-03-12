@@ -429,6 +429,20 @@ than permanent tables: local temporary tables, global temporary tables and table
 
 	Local Temporary Tables
 
+This is useful to work with like tables. However, it only works in the session in which they
+are created. CAnnot be accesed ny other sessions. It is prefixed with a # symbol.
+
+	Global Temporary Tables (GTB)
+
+AS at SQL Server 2016. GTB only works on SQL server box product and not on Azure SQL database
+This works within the session that creates it. It also can be accessed by other sessions. It gets
+destroyed when the session that creates it is disconnected. It can be created by prefixing
+the table nname with double # symbol.
+
+NOTE: If you want a global temporary table to be created every time SQL Server starts, and you
+don’t want SQL Server to try to destroy it automatically, you need to create the table from a
+stored procedure that is marked as a startup procedure.
+
 
 */
 
@@ -455,3 +469,105 @@ SELECT Cur.orderyear, Cur.qty AS curyearqty, Prv.qty AS prvyearqty
 FROM #MyOrderTotalsByYear AS Cur
 	LEFT OUTER JOIN #MyOrderTotalsByYear AS Prv ON Cur.orderyear = Prv.orderyear + 1;
 
+
+-- Try the following code in another session (It has been destroyed)
+
+USE TSQLV4;
+
+SELECT orderyear, qty FROM #MyOrderTotalsByYear;
+
+-- It is general practice to clean up resources when one is done working with them
+
+DROP TABLE IF EXISTS #MyOrderTotalsByYear;
+
+-- The following illustrates the use of global temporary table
+
+DROP TABLE IF EXISTS ##Globals
+
+CREATE TABLE ##Globals
+(
+	id sysname NOT NULL PRIMARY KEY, -- sysname data type is used internally to represent identifiers
+	val SQL_VARIANT NOT NULL		 -- SQL_VARIANT is generic data type that stores value of almost any base type
+);
+
+INSERT INTO ##Globals(id, val) VALUES('i', CAST(10 AS INT));
+
+SELECT val FROM ##Globals WHERE id = N'i';
+
+-- The following code can be used from any session to destroy the global temporary table
+
+DROP TABLE IF EXISTS ##Globals;
+
+-- The following code uses a table variable instead of a local temporary table to
+-- compare total order quantities of each order year with the year before:
+
+DECLARE @MyOrderTotalsByYear TABLE
+(
+	orderyear INT NOT NULL PRIMARY KEY,
+	qty		  INT NOT NULL
+);
+
+INSERT INTO @MyOrderTotalsByYear(orderyear, qty)
+	SELECT
+		YEAR(O.orderdate) AS orderyear,
+		SUM(OD.qty) AS qty
+	FROM Sales.Orders AS O INNER JOIN Sales.OrderDetails AS OD ON OD.orderid = O.orderid
+	GROUP BY YEAR(orderdate);
+
+	SELECT Cur.orderyear, Cur.qty AS curyearqty, Prv.qty AS prvyearqty
+	FROM @MyOrderTotalsByYear AS Cur LEFT OUTER JOIN @MyOrderTotalsByYear AS Prv
+				ON Cur.orderyear = Prv.orderyear + 1;
+
+-- The above can be implemented using windows function
+
+SELECT
+	YEAR(O.orderdate) AS orderyear,
+	SUM(OD.qty) AS curyearqty,
+	LAG(SUM(OD.qty)) OVER(ORDER BY YEAR(orderdate)) AS prvyearqty
+FROM Sales.Orders AS O INNER JOIN Sales.OrderDetails AS OD ON OD.orderid = O.orderid
+GROUP BY YEAR(orderdate);
+
+/*
+	Table types
+You can use a table type to preserve a table definition as an object in the database. Later you
+can reuse it as the table definition of table variables and input parameters of stored procedures
+and user-defined functions. Table types are required for table-valued parameters (TVPs).
+
+The benefit of the table type feature extends beyond just helping you shorten your code. As
+I mentioned, you can use it as the type of input parameters of stored procedures and functions,
+which is a useful capability.
+
+*/
+
+-- The following code creates a table type called dbo.OrderTotalsByYear in the current database:
+
+DROP TYPE IF EXISTS dbo.OrderTotalsByYear;
+
+CREATE TYPE dbo.OrderTotalsByYear AS TABLE
+(
+	orderyear INT NOT NULL PRIMARY KEY,
+	qty		  INT NOT NULL
+);
+
+-- We can easily create a table variable from a type(if it exists)
+
+DECLARE @MyOrderTotalsByYear AS dbo.OrderTotalsByYear
+
+/*
+the following code declares a variable called
+@MyOrderTotalsByYear of the new table type, queries the Orders and OrderDetails tables to
+calculate total order quantities by order year, stores the result of the query in the table
+variable, and queries the variable to present its contents:
+*/
+
+DECLARE @MyOrderTotalsByYear AS dbo.OrderTotalsByYear;
+
+INSERT INTO @MyOrderTotalsByYear(orderyear, qty)
+	SELECT
+		YEAR(O.orderdate) AS orderyear,
+		SUM(OD.qty) AS qty
+	FROM Sales.Orders AS O INNER JOIN Sales.OrderDetails AS OD ON OD.orderid = O.orderid
+	GROUP BY YEAR(orderdate);
+
+
+SELECT orderyear, qty FROM @MyOrderTotalsByYear;
