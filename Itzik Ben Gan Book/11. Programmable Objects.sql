@@ -571,3 +571,321 @@ INSERT INTO @MyOrderTotalsByYear(orderyear, qty)
 
 
 SELECT orderyear, qty FROM @MyOrderTotalsByYear;
+
+/*
+	DYNAMIC SQL
+
+Dynamic SQL is the act of executing a batch of T-SQL code as a character string. THis is done 
+using EXEC and sp_executesql stored procedure.
+
+sp_executesql supports only unicode character strings unlike EXEC that supports both regular
+and unicode character strings. sp_executesql is also more flecible that EXEC because it takes
+input and output parameters. The sp_executesqlcan perform better than EXEC because its
+parameterization aids in reusing cached execution plans.
+
+The sp_executesql procedure has two input parameters and an assignments section. You
+specify the Unicode character string holding the batch of code you want to run in the first
+parameter, which is called @stmt. You provide a Unicode character string holding the
+declarations of input and output parameters in the second input parameter, which is called
+@params.
+
+*/
+
+--  Using EXEC COMMAND
+
+DECLARE @sql AS VARCHAR(100);
+SET @sql = 'PRINT''This message was printed by a dynamic SQL batch'';';
+EXEC(@sql);
+
+-- Using sp_executesql. The following example constructs a batch of code with a query against the Sales.Orders
+-- table. The example uses an input parameter called @orderid in the query’s filter:
+
+DECLARE @sql AS NVARCHAR(100);
+
+SET @sql = 'SELECT orderid, custid, empid, orderdate
+			FROM Sales.Orders
+			WHERE orderid = @orderid;';
+
+EXEC sp_executesql
+	@stmt = @sql,
+	@params = N'@orderid AS INT',
+	@orderid = 10248;
+
+/*
+	USing PIVOT with Dyanmic SQL
+
+NOTE: There are more efficient ways to concatenate strings than using a cursor, such as using
+Common Language Runtime (CLR) aggregates and the FOR XML PATH option.
+*/
+
+SELECT *
+FROM (SELECT shipperid, YEAR(orderdate) AS orderyear, freight
+		FROM Sales.Orders) AS D
+	PIVOT(SUM(freight) FOR orderyear IN([2014], [2015], [2016])) AS P;
+
+/*
+With the static query, you have to know ahead of time which values (order years in this
+case) to specify in the IN clause of the PIVOT operator. This means you need to revise the
+code every year. Instead, you can query the distinct order years from the data, construct a
+batch of dynamic SQL code based on the years you queried, and execute the dynamic SQL
+batch like this:
+*/
+
+DECLARE 
+	@sql AS NVARCHAR(1000),
+	@orderyear AS INT,
+	@first AS INT;
+
+DECLARE C CURSOR FAST_FORWARD FOR
+	SELECT DISTINCT
+		YEAR(orderdate) AS orderyear
+	FROM Sales.Orders
+	ORDER BY orderyear;
+
+SET @first = 1;
+
+SET @sql = N'SELECT *
+			FROM (SELECT shipperid, YEAR(orderdate) AS orderyear, freight
+					FROM Sales.Orders) AS D
+						PIVOT(SUM(freight) FOR orderyear IN(';
+
+OPEN C;
+
+FETCH NEXT FROM C INTO @orderyear;
+
+WHILE @@FETCH_STATUS = 0
+BEGIN
+	IF @first = 0
+		SET @sql += N','
+	ELSE
+		SET @first = 0;
+
+	SET @sql += QUOTENAME(@orderyear);
+
+	FETCH NEXT FROM C INTO @orderyear;
+END;
+
+CLOSE C;
+
+DEALLOCATE C;
+
+SET @sql += N')) AS P; ';
+
+EXEC sp_executesql @stmt = @sql;
+
+/*
+	ROUTINES
+
+Routines are programmable objects that can be used to calculate a result to perform an activity.
+SQL Server typically have 3 routines; triggers, stored procedures and user-defined functions.
+
+*/
+
+-- The following code creates a UDF called dbo.GetAge that returns the age of a
+-- person with a specified birth date (@birthdate argument) at a specified event date (@eventdate
+-- argument):
+
+DROP FUNCTION IF EXISTS dbo.GetAge;
+GO
+
+CREATE FUNCTION dbo.GetAge
+(
+	@birthdate AS DATE,
+	@eventdate AS DATE
+)
+RETURNS INT
+AS
+BEGIN
+	RETURN
+		DATEDIFF(YEAR, @birthdate, @eventdate)
+		-   (CASE WHEN 100 * MONTH(@eventdate) + DAY(@eventdate)
+					< 100 * MONTH(@birthdate) + DAY(@birthdate)
+				  THEN 1 ELSE 0
+			 END);
+END;
+GO
+
+-- Find another approach
+
+CREATE FUNCTION dbo.GetAge
+(
+	@birthdate AS DATE,
+	@eventdate AS DATE
+)
+RETURNS INT
+AS
+BEGIN
+	RETURN
+		DATEDIFF(YEAR, @birthdate, @eventdate)
+		-   (CASE WHEN DATEDIFF(DAYOFYEAR, @birthdate, @eventdate))
+				  THEN 1 ELSE 0
+			 END);
+END;
+GO
+
+
+-- The following code queries the HR.Employees table and invokes the GetAge function in the
+-- SELECT list to calculate the age of each employee today:
+
+SELECT
+	empid, firstname, lastname, birthdate,
+	dbo.GetAge(birthdate, SYSDATETIME()) AS age
+FROM HR.Employees;
+
+
+/*
+	STORED PROCEDURE
+*/
+
+-- the following code creates a stored procedure called Sales.GetCustomerOrders. The 
+-- procedure accepts a customer ID (@custid) and a date range (@fromdate and @todate) as 
+-- inputs. The procedure returns rows from the Sales.Orders table representing orders placed by the requested customer in the requested date range as a result
+-- set, and the number of affected rows as an output parameter (@numrows):
+
+-- The code absorbs the value of the output parameter @numrows in the local variable @rc and returns it to show how many rows were
+-- affected by the query:
+
+DROP PROC IF EXISTS Sales.GetCustomerOrders;
+GO
+
+CREATE PROC Sales.GetCustomerOrders
+	@custid AS INT,
+	@fromdate AS DATETIME2 = '19000101',
+	@todate AS DATETIME2 = '99991231',
+	@numrows AS INT OUTPUT
+AS 
+SET NOCOUNT ON;
+
+SELECT orderid, custid, empid, orderdate
+FROM Sales.Orders
+WHERE custid = @custid AND orderdate >= @fromdate AND orderdate < @todate;
+
+SET @numrows = @@ROWCOUNT;
+GO
+
+DECLARE @rc AS INT;
+
+EXEC Sales.GetCustomerOrders
+	@custid = 1,
+	@fromdate = '20150101',
+	@todate = '20160101',
+	@numrows = @rc OUTPUT;
+
+SELECT @rc AS numrows;
+
+/*
+	TRIGGERS
+
+DML and DDL triggers.
+
+DML triggers are: AFTER and INSTEAD OF
+
+DDL triggers in SQL Server box product supports 2 scopes, the database and server scope
+CREATE TABLE at database scope and CREATE DATABASE at server scope. Azure SQL Database 
+currently supports only database triggers.
+
+SQL Server only supports after DDL triggers and not instead of DDL triggers.
+
+Within the trigger, you obtain information about the event that caused the trigger to fire by
+querying a function called EVENTDATA, which returns the event information as an XML
+instance. You can use XQuery expressions to extract event attributes such as post time, event
+type, and login name from the XML instance.
+*/
+
+DROP TABLE IF EXISTS dbo.T1_Audit, dbo.T1;
+
+CREATE TABLE dbo.T1
+(
+	keycol INT NOT NULL PRIMARY KEY,
+	datacol VARCHAR(10) NOT NULL
+);
+
+CREATE TABLE dbo.T1_Audit
+(
+	audit_lsn INT NOT NULL IDENTITY PRIMARY KEY,
+	dt DATETIME2(3) NOT NULL DEFAULT(SYSDATETIME()),
+	login_name sysname NOT NULL DEFAULT(ORIGINAL_LOGIN()),
+	keycol INT NOT NULL,
+	datacol VARCHAR(10) NOT NULL
+);
+
+-- Run the following code to create the AFTER INSERT trigger trg_T1_insert_audit on
+-- the T1 table to audit insertions:
+
+DROP TRIGGER IF EXISTS trg_T1_insert_audit;
+GO
+
+CREATE TRIGGER trg_T1_insert_audit ON dbo.T1 AFTER INSERT
+AS 
+SET NOCOUNT ON;
+
+INSERT INTO dbo.T1_Audit(keycol, datacol)
+	SELECT keycol, datacol FROM inserted;
+GO
+
+-- Lets run the INSERTS and see if trigger was implemented
+
+INSERT INTO dbo.T1(keycol, datacol) VALUES(10, 'a');
+INSERT INTO dbo.T1(keycol, datacol) VALUES(30, 'x');
+INSERT INTO dbo.T1(keycol, datacol) VALUES(20, 'g');
+
+-- Query the audit table
+
+SELECT audit_lsn, dt, login_name, keycol, datacol
+FROM dbo.T1_Audit;
+
+
+-- Cleanup code
+
+DROP TABLE dbo.T1_Audit, dbo.T1;
+
+-- The following code creates the dbo.AuditDDLEvents table, which holds the audit
+-- information:
+
+DROP TABLE IF EXISTS dbo.AuditDDLEvents;
+CREATE TABLE dbo.AuditDDLEvents
+(
+	audit_lsn INT NOT NULL IDENTITY,
+	posttime DATETIME2(3) NOT NULL,
+	eventtype sysname NOT NULL,
+	loginname sysname NOT NULL,
+	schemaname sysname NOT NULL,
+	objectname sysname NOT NULL,
+	targetobjectname sysname NULL,
+	eventdata XML NOT NULL,
+	CONSTRAINT PK_AuditDDLEvents PRIMARY KEY(audit_lsn)
+);
+GO
+
+CREATE TRIGGER trg_audit_ddl_events ON DATABASE FOR DDL_DATABASE_LEVEL_EVENTS
+AS
+SET NOCOUNT ON;
+
+DECLARE @eventdata AS XML = eventdata();
+INSERT INTO dbo.AuditDDLEvents(posttime, eventtype, loginname, schemaname, objectname, targetobjectname, eventdata)
+VALUES(
+	@eventdata.value('(/EVENT_INSTANCE/PostTime)[1]', 'VARCHAR(23)'),
+	@eventdata.value('(/EVENT_INSTANCE/EventType)[1]', 'sysname'),
+	@eventdata.value('(/EVENT_INSTANCE/LoginName)[1]', 'sysname'),
+	@eventdata.value('(/EVENT_INSTANCE/SchemaName)[1]', 'sysname'),
+	@eventdata.value('(/EVENT_INSTANCE/ObjectName)[1]', 'sysname'),
+	@eventdata.value('(/EVENT_INSTANCE/TargetObjectName)[1]', 'sysname'),
+	@eventdata)
+GO
+
+-- To test the trigger, run the following code, which contains a few DDL statements:
+
+CREATE TABLE dbo.T1(col1 INT NOT NULL PRIMARY KEY);
+ALTER TABLE dbo.T1 ADD col2 INT NULL;
+ALTER TABLE dbo.T1 ALTER COLUMN col2 INT NOT NULL;
+CREATE NONCLUSTERED INDEX idx1 ON dbo.T1(col2);
+
+-- Run the following code to query the audit table:
+
+SELECT * FROM dbo.AuditDDLEvents;
+
+-- Run code for cleanup
+
+DROP TRIGGER IF EXISTS trg_audit_ddl_events ON DATABASE;
+DROP TABLE IF EXISTS dbo.AuditDDLEvents;
+
